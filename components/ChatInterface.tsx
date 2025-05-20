@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState, FormEvent, useRef } from 'react';
+import React, { useState, FormEvent, useRef, useEffect } from 'react';
 import { Paperclip } from 'lucide-react'; // Assuming lucide-react for icons
+
+const COOLDOWN_DURATION = 3; // Cooldown in seconds
 
 const ChatInterface: React.FC = () => {
   const [question, setQuestion] = useState<string>('');
@@ -9,7 +11,24 @@ const ChatInterface: React.FC = () => {
   const [response, setResponse] = useState<string>(''); // Retained for potential direct response display if needed outside conversation
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [conversation, setConversation] = useState<{ role: string; content: string; image?: string }[]>([]);
+  const [cooldown, setCooldown] = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (cooldown > 0) {
+      timer = setTimeout(() => {
+        setCooldown(prev => prev - 1);
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [cooldown]);
+
+  const startCooldown = () => {
+    setCooldown(COOLDOWN_DURATION);
+  };
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -32,6 +51,11 @@ const ChatInterface: React.FC = () => {
     if (event) {
       event.preventDefault();
     }
+
+    if (cooldown > 0) {
+      return; // Don't allow submission during cooldown
+    }
+
     if (!question.trim() && !imageData) {
       // Allow sending just an image
       if(imageData && !question.trim()){
@@ -44,6 +68,8 @@ const ChatInterface: React.FC = () => {
     }
 
     setIsLoading(true);
+    startCooldown(); // Start cooldown when message is sent
+
     // Add user message to conversation
     const userMessageContent = question.trim() || (imageData ? "Uploaded an image" : "Empty message");
     const newConversationEntry: { role: string; content: string; image?: string } = { role: 'user', content: userMessageContent };
@@ -96,42 +122,43 @@ const ChatInterface: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen w-full bg-neutral-800 text-white items-center p-4">
-      <header className="w-full max-w-5xl mb-4">
+    <div className="flex flex-col h-screen max-w-screen-2xl mx-auto">
+      <header className="w-full py-6">
         <h1 className="text-3xl font-semibold text-center text-cyan-400">RateMate</h1>
       </header>
 
-      <main className="flex-grow w-full max-w-5xl overflow-y-auto bg-neutral-700 rounded-xl p-4 space-y-4 mb-4">
+      <main className="flex-grow w-full overflow-y-auto bg-neutral-700 rounded-xl px-6 md:px-8 lg:px-12 py-6 space-y-4 mb-4">
         {conversation.map((msg, index) => (
           <div
             key={index}
-            className={`flex flex-col p-3 rounded-xl shadow ${
+            className={`flex flex-col p-4 rounded-xl shadow ${
               msg.role === 'user' 
-                ? 'bg-cyan-600 text-white self-end ml-10' 
-                : 'bg-neutral-600 text-neutral-100 self-start mr-10'
+                ? 'bg-cyan-600 text-white self-end ml-8 md:ml-16 lg:ml-24' 
+                : 'bg-neutral-600 text-neutral-100 self-start mr-8 md:mr-16 lg:mr-24'
             }`}
-            style={{ maxWidth: '80%'}}
+            style={{ maxWidth: '90%'}}
           >
             <strong className="text-sm mb-1">{msg.role === 'user' ? 'You' : 'RateMate Assistant'}</strong>
-            {msg.image && <img src={msg.image} alt="Uploaded content" className="max-w-xs max-h-48 rounded-md my-2" />}
+            {msg.image && <img src={msg.image} alt="Uploaded content" className="max-w-lg max-h-48 rounded-md my-2" />}
             <p className="whitespace-pre-wrap">{msg.content}</p>
           </div>
         ))}
         {isLoading && conversation.length > 0 && conversation[conversation.length -1].role === 'user' && (
-          <div className="self-start p-3 rounded-xl shadow bg-neutral-600 text-neutral-100 mr-10" style={{ maxWidth: '80%'}}>
+          <div className="self-start p-4 rounded-xl shadow bg-neutral-600 text-neutral-100 mr-8 md:mr-16 lg:mr-24" style={{ maxWidth: '90%'}}>
             <strong className="text-sm mb-1">RateMate Assistant</strong>
             <p className="whitespace-pre-wrap">Thinking...</p>
           </div>
         )}
       </main>
 
-      <footer className="w-full max-w-5xl p-1">
-        <form onSubmit={handleSubmit} className="flex items-end gap-2 bg-neutral-700 p-3 rounded-xl shadow-md">
+      <footer className="w-full pb-6 px-4">
+        <form onSubmit={handleSubmit} className="flex items-end gap-3 bg-neutral-700 p-4 rounded-xl shadow-md">
           <button
             type="button"
             onClick={triggerFileInput}
             className="p-2 text-neutral-400 hover:text-cyan-400 focus:outline-none"
             aria-label="Attach file"
+            disabled={cooldown > 0}
           >
             <Paperclip size={24} />
           </button>
@@ -139,24 +166,33 @@ const ChatInterface: React.FC = () => {
             type="file"
             ref={fileInputRef}
             id="image-upload"
-            accept=".png, .jpg, .jpeg, .pdf, .txt, .md" // Expanded accepted file types
+            accept=".png, .jpg, .jpeg, .pdf, .txt, .md"
             onChange={handleImageUpload}
-            className="hidden" // Hidden, triggered by the button
+            className="hidden"
+            disabled={cooldown > 0}
           />
-          <textarea
-            id="question"
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            onKeyPress={handleKeyPress}
-            rows={1} // Start with 1 row, expands automatically
-            placeholder="Ask RateMate..."
-            className="flex-grow resize-none overflow-y-auto max-h-28 bg-neutral-600 text-white rounded-xl p-3 border border-neutral-500 focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500"
-            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }} // Hide scrollbar
-          />
+          <div className="relative flex-grow">
+            <textarea
+              id="question"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyPress={handleKeyPress}
+              rows={1}
+              placeholder={cooldown > 0 ? `Wait ${cooldown}s before sending...` : "Ask RateMate..."}
+              className="flex-grow resize-none overflow-y-auto max-h-32 bg-neutral-600 text-white rounded-xl p-4 border border-neutral-500 focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 w-full"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+              disabled={cooldown > 0}
+            />
+            {cooldown > 0 && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-neutral-400">
+                {cooldown}s
+              </div>
+            )}
+          </div>
           <button
             type="submit"
-            disabled={isLoading || (!question.trim() && !imageData)}
-            className="p-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:bg-neutral-500 disabled:cursor-not-allowed text-white focus:outline-none"
+            disabled={isLoading || cooldown > 0}
+            className="p-4 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed text-white focus:outline-none"
             aria-label="Send message"
           >
             {isLoading ? (
