@@ -25,7 +25,7 @@ const COMPLETION_MODEL = "gpt-4.1-mini";
 const MAX_TOKENS = 500;
 const EMBEDDING_DIMENSION = 1536; // Matching model's output
 const SIMILARITY_THRESHOLD = 0;
-const MAX_RESULTS_PER_TABLE = 3;
+const MAX_RESULTS_PER_TABLE = 10;
 const MAX_CONTEXT_LENGTH = 3000; // Max characters for combined context
 
 // Define a more specific type for conversation history entries
@@ -83,7 +83,7 @@ async function vectorSearch(queryEmbedding: number[], limitPerTable: number = MA
                 if (error) console.error("Error matching posts:", error);
                 return data?.map((post: any) => ({ source: `Reddit Post: ${post.title || 'Untitled'}`, content: post.text || '', post_id: post.id })) || [];
             }),
-            supabase.rpc("match_comments_embeddings", rpcParams).then(({ data, error }) => {
+            supabase.rpc("match_comments_embeddings ", rpcParams).then(({ data, error }) => {
                 if (error) console.error("Error matching comments:", error);
                 return data?.map((comment: any) => ({ source: `Comment on Post ${comment.post_id}`, content: comment.body || '', post_id: comment.post_id })) || [];
             }),
@@ -187,8 +187,9 @@ export async function POST(request: NextRequest) {
         const sessionIdCookie = request.cookies.get('session_id');
         const sessionId = sessionIdCookie?.value || crypto.randomUUID();
 
-        if (!question || question.trim() === "") {
-            return NextResponse.json({ detail: "Question cannot be empty" }, { status: 400 });
+        // Allow empty question if image_data is present
+        if ((!question || question.trim() === "") && !image_data) {
+            return NextResponse.json({ detail: "Question cannot be empty if no image is provided" }, { status: 400 });
         }
 
         let currentConversation = clientConversationHistory || conversationHistories[sessionId] || [];

@@ -85,14 +85,24 @@ const ChatInterface: React.FC = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          question: question.trim(), // Send trimmed question
+          question: question.trim(),
           image_data: imageData,
         }),
       });
 
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.detail || 'Failed to get response');
+        let errorPayload;
+        let errorText = await res.text(); // Get raw response text first
+        try {
+          errorPayload = JSON.parse(errorText); // Try to parse it as JSON
+        } catch (e) {
+          // If JSON parsing fails, the response body might not be JSON or is malformed
+          console.error("API Error: Failed to parse JSON response. Status:", res.status, "Body:", errorText);
+          throw new Error(`API Error: ${res.status} ${res.statusText}. Response body not valid JSON.`);
+        }
+        console.error("API Error Status:", res.status);
+        console.error("API Error Payload:", errorPayload); 
+        throw new Error(errorPayload?.detail || `Failed to get response from API (Status: ${res.status}, Body: ${JSON.stringify(errorPayload)})`);
       }
 
       const data = await res.json();
@@ -105,8 +115,11 @@ const ChatInterface: React.FC = () => {
       }
 
     } catch (error: any) {
-      const errorMessage = `Error: ${error.message}`;
-      setResponse(errorMessage); // Retained
+      const errorMessage = error.message.startsWith('API Error:') || error.message.startsWith('Failed to get response from API') 
+        ? error.message 
+        : `Error: ${error.message}`;
+      console.error("handleSubmit caught error:", error); // Log the full error object
+      setResponse(errorMessage);
       setConversation(prev => [...prev, { role: 'assistant', content: errorMessage }]);
     } finally {
       setIsLoading(false);

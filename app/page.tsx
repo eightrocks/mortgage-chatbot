@@ -82,41 +82,79 @@ export default function Home() {
     e.preventDefault();
     if ((!input.trim() && attachments.length === 0) || isLoading) return;
 
-    const userMessage = input.trim();
-    setInput('');
-    
-    // Create FormData to handle both text and files
-    const formData = new FormData();
-    formData.append('message', userMessage);
-    attachments.forEach((file, index) => {
-      formData.append(`attachment${index}`, file);
-    });
+    const userMessageContent = input.trim();
+    const currentAttachments = [...attachments]; // Keep the File objects for the message state
 
-    setMessages(prev => [...prev, { 
-      role: 'user', 
-      content: userMessage,
-      attachments: [...attachments]
-    }]);
-    setAttachments([]);
+    setInput('');
+    setAttachments([]); // Clear the separate input attachments state
     setIsLoading(true);
 
+    // Add user message to UI, keeping original File objects in attachments
+    setMessages(prev => [...prev, {
+      role: 'user',
+      content: userMessageContent,
+      attachments: currentAttachments 
+    }]);
+
+    let image_data_b64: string | null = null;
+
+    if (currentAttachments.length > 0) {
+      // For sending to backend, process the first file into a base64 string
+      // The original File object remains in the `messages` state for local UI
+      const fileToProcess = currentAttachments[0]; 
+      try {
+        image_data_b64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(fileToProcess);
+        });
+      } catch (error) {
+        console.error("Error reading file for image_data:", error);
+        // Decide if you want to proceed without image_data or show an error
+      }
+    }
+
     try {
-      const response = await fetch('/api/chat', {
+      const requestBody = {
+        question: userMessageContent,
+        image_data: image_data_b64, // Send base64 string
+        // If you want to send conversation_history, you'll need to decide how to represent attachments there.
+        // For example, you might omit them or just send file names from the `messages` state.
+        // conversation_history: prevMessages.map(msg => ({ 
+        //   role: msg.role,
+        //   content: msg.content,
+        //   // attachments: msg.attachments?.map(f => f.name) // Example: send only names
+        // }))
+      };
+
+      const response = await fetch('/api/ask', { 
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to get response');
+        let errorDetail = 'Failed to get response from server';
+        try {
+            const errorData = await response.json();
+            errorDetail = errorData.detail || JSON.stringify(errorData);
+        } catch (jsonError) {
+            errorDetail = await response.text() || response.statusText || 'Unknown server error';
+        }
+        throw new Error(errorDetail);
       }
 
       const data = await response.json();
-      setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
-    } catch (error) {
-      console.error('Error:', error);
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: 'Sorry, I encountered an error. Please try again.' 
+      // Add assistant message to UI
+      setMessages(prev => [...prev, { role: 'assistant', content: data.answer }]);
+    } catch (error: any) {
+      console.error('Error in handleSubmit:', error);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `Sorry, I encountered an error: ${error.message}. Please try again.`
       }]);
     } finally {
       setIsLoading(false);
