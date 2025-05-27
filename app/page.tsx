@@ -63,11 +63,12 @@ export default function Home() {
         return type.includes('pdf') || 
                type.includes('doc') || 
                type.includes('docx') || 
-               type.includes('txt');
+               type.includes('txt') ||
+               type.startsWith('image/'); // Allow all image types
       });
       
       if (supportedFiles.length !== files.length) {
-        alert('Some files were not added. Only PDF, DOC, DOCX, and TXT files are supported.');
+        alert('Some files were not added. Only PDF, DOC, DOCX, TXT, and common image files are supported.');
       }
       
       setAttachments(prev => [...prev, ...supportedFiles]);
@@ -258,7 +259,7 @@ export default function Home() {
               onChange={handleFileChange}
               className="hidden"
               multiple
-              accept=".pdf,.doc,.docx,.txt"
+              accept=".pdf,.doc,.docx,.txt,image/*"
             />
             <div className="relative">
               <button

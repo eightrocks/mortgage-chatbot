@@ -83,7 +83,7 @@ async function vectorSearch(queryEmbedding: number[], limitPerTable: number = MA
                 if (error) console.error("Error matching posts:", error);
                 return data?.map((post: any) => ({ source: `Reddit Post: ${post.title || 'Untitled'}`, content: post.text || '', post_id: post.id })) || [];
             }),
-            supabase.rpc("match_comments_embeddings ", rpcParams).then(({ data, error }) => {
+            supabase.rpc("match_comments_embeddings", rpcParams).then(({ data, error }) => {
                 if (error) console.error("Error matching comments:", error);
                 return data?.map((comment: any) => ({ source: `Comment on Post ${comment.post_id}`, content: comment.body || '', post_id: comment.post_id })) || [];
             }),
@@ -160,7 +160,7 @@ Relevant context from database: ${statsString}`;
     }
 
     const userMessageContent: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [{ type: "text", text: userQuestion }];
-    if (imageData) { // Ensure this is a data URL (e.g., "data:image/jpeg;base64,...")
+    if (imageData) { // imageData is expected to be a data URL (e.g., "data:image/png;base64,...", "data:image/jpeg;base64,...")
         userMessageContent.push({ type: "image_url", image_url: { url: imageData, detail: "auto" } });
     }
     messages.push({ role: "user", content: userMessageContent });
