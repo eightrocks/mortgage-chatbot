@@ -84,73 +84,110 @@ export default function Home() {
     if ((!input.trim() && attachments.length === 0) || isLoading) return;
 
     const userMessageContent = input.trim();
-    const currentAttachments = [...attachments]; // Keep the File objects for the message state
+    const currentAttachments = [...attachments];
 
     setInput('');
-    setAttachments([]); // Clear the separate input attachments state
+    setAttachments([]);
     setIsLoading(true);
 
-    // Add user message to UI, keeping original File objects in attachments
+    // Add user message to UI immediately
     setMessages(prev => [...prev, {
       role: 'user',
-      content: userMessageContent,
+      content: userMessageContent || `Analyzing file: ${currentAttachments[0]?.name}`,
       attachments: currentAttachments 
     }]);
 
-    let image_data_b64: string | null = null;
-
-    if (currentAttachments.length > 0) {
-      // For sending to backend, process the first file into a base64 string
-      // The original File object remains in the `messages` state for local UI
-      const fileToProcess = currentAttachments[0]; 
-      try {
-        image_data_b64 = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(fileToProcess);
-        });
-      } catch (error) {
-        console.error("Error reading file for image_data:", error);
-        // Decide if you want to proceed without image_data or show an error
-      }
-    }
-
     try {
-      const requestBody = {
-        question: userMessageContent,
-        image_data: image_data_b64, // Send base64 string
-        // If you want to send conversation_history, you'll need to decide how to represent attachments there.
-        // For example, you might omit them or just send file names from the `messages` state.
-        // conversation_history: prevMessages.map(msg => ({ 
-        //   role: msg.role,
-        //   content: msg.content,
-        //   // attachments: msg.attachments?.map(f => f.name) // Example: send only names
-        // }))
-      };
+      if (currentAttachments.length > 0) {
+        const fileToProcess = currentAttachments[0];
+        
+        // Handle different file types
+        if (fileToProcess.type.startsWith('image/')) {
+          // Handle images with existing logic
+          const image_data_b64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(fileToProcess);
+          });
 
-      const response = await fetch('/api/ask', { 
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
+          const response = await fetch('/api/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              question: userMessageContent,
+              image_data: image_data_b64
+            }),
+          });
 
-      if (!response.ok) {
-        let errorDetail = 'Failed to get response from server';
-        try {
-            const errorData = await response.json();
-            errorDetail = errorData.detail || JSON.stringify(errorData);
-        } catch (jsonError) {
-            errorDetail = await response.text() || response.statusText || 'Unknown server error';
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
+
+          const data = await response.json();
+          setMessages(prev => [...prev, { role: 'assistant', content: data.answer }]);
+
+        } else if (
+          fileToProcess.type === 'application/pdf' ||
+          fileToProcess.type === 'application/msword' ||
+          fileToProcess.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        ) {
+          // Handle PDFs and DOCs with new upload-and-ask endpoint
+          const formData = new FormData();
+          formData.append('file', fileToProcess);
+          formData.append('question', userMessageContent || 'What is this document about?');
+
+          const response = await fetch('/api/upload-and-ask', {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
+
+          const data = await response.json();
+          setMessages(prev => [...prev, { role: 'assistant', content: data.answer }]);
+
+        } else if (fileToProcess.type === 'text/plain') {
+          // Handle text files with existing logic
+          const textContent = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsText(fileToProcess);
+          });
+
+          const response = await fetch('/api/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              question: `${userMessageContent}\n\n--- Content from ${fileToProcess.name} ---\n${textContent}`
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
+
+          const data = await response.json();
+          setMessages(prev => [...prev, { role: 'assistant', content: data.answer }]);
         }
-        throw new Error(errorDetail);
-      }
+      } else {
+        // Handle text-only messages with existing logic
+        const response = await fetch('/api/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question: userMessageContent }),
+        });
 
-      const data = await response.json();
-      // Add assistant message to UI
-      setMessages(prev => [...prev, { role: 'assistant', content: data.answer }]);
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+
+        const data = await response.json();
+        setMessages(prev => [...prev, { role: 'assistant', content: data.answer }]);
+      }
     } catch (error: any) {
       console.error('Error in handleSubmit:', error);
       setMessages(prev => [...prev, {

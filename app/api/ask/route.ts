@@ -24,7 +24,7 @@ const EMBEDDING_MODEL = "text-embedding-3-small";
 const COMPLETION_MODEL = "gpt-4.1-mini";
 const MAX_TOKENS = 500;
 const EMBEDDING_DIMENSION = 1536; // Matching model's output
-const SIMILARITY_THRESHOLD = 0;
+const SIMILARITY_THRESHOLD = 0.1;
 const MAX_RESULTS_PER_TABLE = 10;
 const MAX_CONTEXT_LENGTH = 3000; // Max characters for combined context
 
